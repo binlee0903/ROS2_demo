@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <sched.h>
 #include <arpa/inet.h>
-#include <sys/mman.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -37,15 +36,6 @@ void callback(const std_msgs::msg::String::SharedPtr msg){
 
 int main(int argc, char** argv)
 {
-    mlockall(MCL_FUTURE);
-
-    sched_param param = {94};
-    if (sched_setscheduler(0, SCHED_FIFO, &param) == -1)
-    {
-        perror("sched_setattr");
-        exit(EXIT_FAILURE);
-    }
-
     rclcpp::init(argc, argv);
 
     auto node = rclcpp::Node::make_shared("listener");
@@ -83,7 +73,6 @@ int main(int argc, char** argv)
     listen(socketServer, 100);
 
     _socketClient = accept(socketServer, reinterpret_cast<struct sockaddr*>(&sockaddrClient), &clientSize);
-
 
     rclcpp::spin(node);
     rclcpp::shutdown();

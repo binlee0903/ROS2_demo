@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <sched.h>
 #include <arpa/inet.h>
-#include <sys/mman.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -17,7 +16,7 @@ constexpr int DEFAULT_DEPTH = 5;
 constexpr int PUBLISH_Hz = 1000;
 constexpr int DEFAULT_PORT = 8080;
 
-constexpr const char* DESTINATION_IP = "192.168.1.11";
+constexpr const char* DESTINATION_IP = "192.168.0.2";
 
 void setupTestFiles(std::vector<std::string>& msgs)
 {
@@ -53,21 +52,12 @@ static const rmw_qos_profile_t rmw_qos_profile_best_effort = {
 
 int main(int argc, char **argv)
 {
-    mlockall(MCL_FUTURE);
-
     std::vector<std::string> msgs;
     std::vector<unsigned long long> publishTimes;
     std::vector<unsigned long long> subscribeTimes;
     setupTestFiles(msgs);
     publishTimes.reserve(120);
     subscribeTimes.reserve(120);
-
-    sched_param param = {94};
-    if (sched_setscheduler(0, SCHED_FIFO, &param) == -1)
-    {
-        perror("sched_setattr");
-        exit(EXIT_FAILURE);
-    }
 
     rclcpp::init(argc, argv);
 
