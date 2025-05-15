@@ -1,37 +1,89 @@
 #include <functional>
 #include <memory>
+#include <string>
+#include <fstream>
+#include <time.h>
+#include <unistd.h>
+#include <sched.h>
+#include <arpa/inet.h>
+#include <sys/mman.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 
-using std::placeholders::_1;
+constexpr bool IS_RELIABLE = false;
+constexpr int DEFAULT_DEPTH = 5;
+constexpr int PUBLISH_Hz = 1000;
+constexpr int DEFAULT_PORT = 8080;
 
-class HelloworldSubscriber : public rclcpp::Node
-{
-public:
-    HelloworldSubscriber()
-        : Node("hello_world_subscriber")
-    {
-        auto qos_profile = rclcpp::QoS(rclcpp::KeepLast(10));
-        hello_world_subscriber = this->create_subscription<std_msgs::msg::String>("helloworld", qos_profile,
-        std::bind(&HelloworldSubscriber::subscribe_message, this, _1));
-    }
+int _socketClient = 0;
 
-    void subscribe_message(const std_msgs::msg::String::SharedPtr msg) const
-    {
-        RCLCPP_INFO(this->get_logger(), "Received message: '%s'", msg->data.c_str());
-    }
+static const rmw_qos_profile_t rmw_qos_profile_reliable = {
+    RMW_QOS_POLICY_HISTORY_KEEP_ALL,
+    5,
+    RMW_QOS_POLICY_RELIABILITY_RELIABLE,
+    RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL};
 
-    
-private:
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr hello_world_subscriber;
-};
+static const rmw_qos_profile_t rmw_qos_profile_best_effort = {
+    RMW_QOS_POLICY_HISTORY_KEEP_LAST,
+    1,
+    RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
+    RMW_QOS_POLICY_DURABILITY_VOLATILE};
+
+
+void callback(const std_msgs::msg::String::SharedPtr msg){
+    write(_socketClient, "x", 1);
+}
 
 int main(int argc, char** argv)
 {
+    mlockall(MCL_FUTURE);
+
+    sched_param param = {94};
+    if (sched_setscheduler(0, SCHED_FIFO, &param) == -1)
+    {
+        perror("sched_setattr");
+        exit(EXIT_FAILURE);
+    }
+
     rclcpp::init(argc, argv);
 
-    auto node = std::make_shared<HelloworldSubscriber>();
+    auto node = rclcpp::Node::make_shared("listener");
+    rclcpp::QoS qos_option(DEFAULT_DEPTH);
+    if (IS_RELIABLE == true)
+    {
+        qos_option
+            .reliable()
+            .keep_all()
+            .transient_local();
+    }
+    else
+    {
+        qos_option
+            .best_effort()
+            .keep_all()
+            .durability_volatile();
+    }
+
+    auto subscriber = node->create_subscription<std_msgs::msg::String>("listener",  qos_option, callback);
+
+    sockaddr_in sockaddrin, sockaddrClient;
+    int socketServer = socket(AF_INET, SOCK_STREAM, 0);
+    unsigned int clientSize = sizeof(sockaddrClient);
+
+    sockaddrin.sin_family = AF_INET;
+    sockaddrin.sin_port = htons(DEFAULT_PORT);
+    sockaddrin.sin_addr.s_addr = INADDR_ANY;
+
+    int trueValue = 1;
+    setsockopt(socketServer, SOL_SOCKET, SO_REUSEADDR, &trueValue, sizeof(int));
+
+    bind(socketServer, reinterpret_cast<struct sockaddr*>(&sockaddrin), sizeof(sockaddrin));
+
+    listen(socketServer, 100);
+
+    _socketClient = accept(socketServer, reinterpret_cast<struct sockaddr*>(&sockaddrClient), &clientSize);
+
 
     rclcpp::spin(node);
     rclcpp::shutdown();
