@@ -11,12 +11,12 @@
 #include "std_msgs/msg/string.hpp"
 #include "rmw/types.h"
 
-constexpr bool IS_RELIABLE = false;
+constexpr bool IS_RELIABLE = true;
 constexpr int DEFAULT_DEPTH = 5;
 constexpr int PUBLISH_Hz = 1000;
 constexpr int DEFAULT_PORT = 8080;
 
-constexpr const char* DESTINATION_IP = "192.168.0.2";
+constexpr const char* DESTINATION_IP = "192.168.1.126";
 
 void setupTestFiles(std::vector<std::string>& msgs)
 {
@@ -25,9 +25,9 @@ void setupTestFiles(std::vector<std::string>& msgs)
     std::string buffer;
     buffer.reserve(16385); // 4MB
 
-    while (fileSizeBase < 16385)
+    while (fileSizeBase < 257)
     {
-        std::ifstream is { std::to_string(fileSizeBase) + fileNameSuffix };
+        std::ifstream is { "./test_data/" + std::to_string(fileSizeBase) + fileNameSuffix };
 
         is >> buffer;
 
@@ -52,6 +52,8 @@ static const rmw_qos_profile_t rmw_qos_profile_best_effort = {
 
 int main(int argc, char **argv)
 {
+    printf("start");
+
     std::vector<std::string> msgs;
     std::vector<unsigned long long> publishTimes;
     std::vector<unsigned long long> subscribeTimes;
@@ -84,14 +86,17 @@ int main(int argc, char **argv)
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
 
-    sockaddr_in sockaddr;
+    sockaddr_in sockaddr = {0};
     sockaddr.sin_family = AF_INET;
     sockaddr.sin_port = htons(DEFAULT_PORT);
-    sockaddr.sin_addr.s_addr = inet_addr(DESTINATION_IP);
+    inet_pton(AF_INET, DESTINATION_IP, &sockaddr.sin_addr);
+
+    printf("start connection");
 
     if (connect(sock, reinterpret_cast<struct sockaddr*>(&sockaddr), sizeof(sockaddr)) < 0)
     {
         printf("error on connection");
+        perror("connect");
         return 1;
     }
 
