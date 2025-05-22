@@ -10,7 +10,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 
-constexpr bool IS_RELIABLE = false;
+constexpr bool IS_RELIABLE = true;
 constexpr int DEFAULT_DEPTH = 5;
 constexpr int PUBLISH_Hz = 1000;
 constexpr int DEFAULT_PORT = 8080;
@@ -55,7 +55,7 @@ int main(int argc, char** argv)
             .durability_volatile();
     }
 
-    auto subscriber = node->create_subscription<std_msgs::msg::String>("listener",  qos_option, callback);
+    auto subscriber = node->create_subscription<std_msgs::msg::String>("default",  qos_option, callback);
 
     sockaddr_in sockaddrin, sockaddrClient;
     int socketServer = socket(AF_INET, SOCK_STREAM, 0);
