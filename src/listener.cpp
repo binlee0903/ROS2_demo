@@ -55,7 +55,7 @@ int main(int argc, char** argv)
             .durability_volatile();
     }
 
-    auto subscriber = node->create_subscription<std_msgs::msg::String>("default",  qos_option, callback);
+    auto subscriber = node->create_subscription<std_msgs::msg::String>("listener",  qos_option, callback);
 
     sockaddr_in sockaddrin, sockaddrClient;
     int socketServer = socket(AF_INET, SOCK_STREAM, 0);

@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <sched.h>
 #include <arpa/inet.h>
+#include <sched.h>
+#include <sys/mman.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -13,28 +15,37 @@
 
 constexpr bool IS_RELIABLE = true;
 constexpr int DEFAULT_DEPTH = 5;
-constexpr int PUBLISH_Hz = 1000;
+constexpr int PUBLISH_Hz = 10;
 constexpr int DEFAULT_PORT = 8080;
 
-constexpr const char* DESTINATION_IP = "192.168.1.126";
+constexpr const char *DESTINATION_IP = "192.168.1.190";
 
-void setupTestFiles(std::vector<std::string>& msgs)
+void setupTestFiles(std::vector<std::string> &msgs)
 {
     int fileSizeBase = 256;
-    std::string fileNameSuffix = ".txt";
-    std::string buffer;
-    buffer.reserve(16385); // 4MB
+    std::string fileNameSuffix = "byte.txt";
 
-    while (fileSizeBase < 257)
+    while (true)
     {
-        std::ifstream is { "./test_data/" + std::to_string(fileSizeBase) + fileNameSuffix };
-
+        std::ifstream is{"./test_data/data_" + std::to_string(fileSizeBase) + fileNameSuffix};
+        std::string buffer(std::istreambuf_iterator<char>(is), {});
         is >> buffer;
 
         msgs.push_back(buffer);
 
         fileSizeBase *= 2;
         is.close();
+
+        if (fileSizeBase > 512 && fileNameSuffix == "Kbyte.txt")
+        {
+            break;
+        }
+
+        if (fileSizeBase > 512 && fileNameSuffix == "byte.txt")
+        {
+            fileSizeBase = 1;
+            fileNameSuffix = "Kbyte.txt";
+        }
     }
 }
 
@@ -52,7 +63,15 @@ static const rmw_qos_profile_t rmw_qos_profile_best_effort = {
 
 int main(int argc, char **argv)
 {
-    printf("start");
+    mlockall(MCL_FUTURE);
+
+    usleep(1000); // avoid race condition
+    sched_param pri = {94};
+    if (sched_setscheduler(0, SCHED_FIFO, &pri) == -1)
+    {
+        perror("sched_setattr");
+        exit(EXIT_FAILURE);
+    }
 
     std::vector<std::string> msgs;
     std::vector<unsigned long long> publishTimes;
@@ -81,7 +100,7 @@ int main(int argc, char **argv)
             .durability_volatile();
     }
 
-    auto default_publisher = node->create_publisher<std_msgs::msg::String>("default", qos_option);
+    auto default_publisher = node->create_publisher<std_msgs::msg::String>("listener", qos_option);
     auto rate = rclcpp::WallRate::make_shared(PUBLISH_Hz);
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -91,9 +110,7 @@ int main(int argc, char **argv)
     sockaddr.sin_port = htons(DEFAULT_PORT);
     inet_pton(AF_INET, DESTINATION_IP, &sockaddr.sin_addr);
 
-    printf("start connection");
-
-    if (connect(sock, reinterpret_cast<struct sockaddr*>(&sockaddr), sizeof(sockaddr)) < 0)
+    if (connect(sock, reinterpret_cast<struct sockaddr *>(&sockaddr), sizeof(sockaddr)) < 0)
     {
         printf("error on connection");
         perror("connect");
@@ -101,40 +118,72 @@ int main(int argc, char **argv)
     }
 
     auto msg = std_msgs::msg::String();
-    msg.data = "";
+    msg.data = "h";
     int count = 1;
     int size = 0;
     int len = 0;
     char buffer[512];
     timespec time;
+    unsigned long long publishTime = 0;
+    unsigned long long subscribeTime = 0;
 
+    int i = 0;
+
+    // Skip the internal initialization process.
+    while (rclcpp::ok())
+    {
+        if (i++ > 20)
+        {
+            break;
+        }
+        default_publisher->publish(msg);
+
+        len = read(sock, buffer, sizeof(buffer));
+        if (len <= 0)
+        {
+            return 1;
+        }
+
+        rclcpp::spin_some(node);
+        rate->sleep();
+    }
+
+    usleep(1000000);
+
+    // real evaluation
     for (auto x : msgs)
     {
-        while (rclcpp::ok() == true)
+        size = x.size();
+        printf("Test %d: msg size %d \n", count++, size);
+
+        msg.data = x;
+
+        if (clock_gettime(CLOCK_MONOTONIC_RAW, &time) < 0)
         {
-            size = x.size();
-            printf("Test %d: msg size %d", count, size);
-
-            msg.data = x;
-
-            clock_gettime(CLOCK_REALTIME, &time);
-            publishTimes.push_back(time.tv_sec + time.tv_nsec / 1000000000L);
-
-            default_publisher->publish(msg);
-
-            len = read(sock, buffer, sizeof(buffer));
-            if (len <= 0)
-            {
-                return 1;
-            }
-
-            clock_gettime(CLOCK_REALTIME, &time);
-            subscribeTimes.push_back(time.tv_sec + time.tv_nsec / 1000000000L);
-
-            rclcpp::spin_some(node);
-            rate->sleep();
-            usleep(1000000);
+            printf("clock error");
         }
+        publishTime = time.tv_sec * 1000000000L + time.tv_nsec;
+
+        default_publisher->publish(msg);
+
+        len = read(sock, buffer, sizeof(buffer));
+        if (len <= 0)
+        {
+            return 1;
+        }
+
+        if (clock_gettime(CLOCK_MONOTONIC_RAW, &time) < 0)
+        {
+            printf("clock error");
+        }
+
+        subscribeTime = time.tv_sec * 1000000000L + time.tv_nsec;
+
+        publishTimes.push_back(publishTime);
+        subscribeTimes.push_back(subscribeTime);
+        rclcpp::spin_some(node);
+        rate->sleep();
+        usleep(1000000);
     }
 
     rclcpp::shutdown();
@@ -145,7 +194,7 @@ int main(int argc, char **argv)
 
     for (int i = 0; i < subscribeTimes.size(); i++)
     {
-        os << fileSizeBase << "bytes RTT: " << subscribeTimes[i] - publishTimes[i] << std::endl;
+        os << fileSizeBase << "bytes RTT: " << subscribeTimes[i] - publishTimes[i] << "ns" << std::endl;
         fileSizeBase *= 2;
     }
 
