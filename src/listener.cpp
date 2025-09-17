@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sched.h>
 #include <arpa/inet.h>
+#include <sys/mman.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -38,10 +39,9 @@ void callback(const std_msgs::msg::String::SharedPtr msg) {
     {
         connectCount++;
 
-        if (connectCount >= 10)
+        if (connectCount >= 12)
         {
             connectCount = 0;
-            close(_socketClient);
             rclcpp::shutdown();
         }
     }
@@ -49,6 +49,16 @@ void callback(const std_msgs::msg::String::SharedPtr msg) {
 
 int main(int argc, char** argv)
 {
+    mlockall(MCL_FUTURE);
+
+    usleep(1000); // avoid race condition
+    sched_param pri = {94};
+    if (sched_setscheduler(0, SCHED_FIFO, &pri) == -1)
+    {
+        perror("sched_setattr");
+        exit(EXIT_FAILURE);
+    }
+
     sockaddr_in sockaddrin, sockaddrClient;
     int socketServer = socket(AF_INET, SOCK_STREAM, 0);
     unsigned int clientSize = sizeof(sockaddrClient);
@@ -90,6 +100,7 @@ int main(int argc, char** argv)
         auto subscriber = node->create_subscription<std_msgs::msg::String>("listener",  qos_option, callback);
 
         rclcpp::spin(node);
+        close(_socketClient);
         printf("end test\n");
     }
 

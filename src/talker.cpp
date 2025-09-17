@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <sched.h>
 #include <arpa/inet.h>
-#include <sched.h>
 #include <sys/mman.h>
 
 #include "rclcpp/rclcpp.hpp"
