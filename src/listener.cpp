@@ -34,7 +34,7 @@ static const rmw_qos_profile_t rmw_qos_profile_best_effort = {
 void callback(const std_msgs::msg::String::SharedPtr msg) {
     write(_socketClient, "x", 1);
 
-    if (msg->data.length() != 0)
+    if (msg->data.length() > 200)
     {
         connectCount++;
 
@@ -90,6 +90,7 @@ int main(int argc, char** argv)
         auto subscriber = node->create_subscription<std_msgs::msg::String>("listener",  qos_option, callback);
 
         rclcpp::spin(node);
+        printf("end test\n");
     }
 
     close(socketServer);
