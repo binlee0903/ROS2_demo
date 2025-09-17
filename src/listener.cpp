@@ -32,14 +32,17 @@ static const rmw_qos_profile_t rmw_qos_profile_best_effort = {
 
 
 void callback(const std_msgs::msg::String::SharedPtr msg){
-    write(_socketClient, "x", 1);
-    connectCount++;
-
-    if (connectCount >= 10)
+    if (msg->data.length() != 0)
     {
-        connectCount = 0;
-        close(_socketClient);
-        rclcpp::shutdown();
+        write(_socketClient, "x", 1);
+        connectCount++;
+
+        if (connectCount >= 10)
+        {
+            connectCount = 0;
+            close(_socketClient);
+            rclcpp::shutdown();
+        }
     }
 }
 
