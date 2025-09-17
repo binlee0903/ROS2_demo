@@ -39,7 +39,7 @@ void callback(const std_msgs::msg::String::SharedPtr msg) {
     {
         connectCount++;
 
-        if (connectCount >= 12)
+        if (connectCount >= 17)
         {
             connectCount = 0;
             rclcpp::shutdown();

@@ -35,7 +35,7 @@ void setupTestFiles(std::vector<std::string> &msgs)
         fileSizeBase *= 2;
         is.close();
 
-        if (fileSizeBase > 524288)
+        if (fileSizeBase > 16777216)
         {
             break;
         }
