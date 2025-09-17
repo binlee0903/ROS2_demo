@@ -57,13 +57,14 @@ int main(int argc, char** argv)
     setsockopt(socketServer, SOL_SOCKET, SO_REUSEADDR, &trueValue, sizeof(int));
 
     bind(socketServer, reinterpret_cast<struct sockaddr*>(&sockaddrin), sizeof(sockaddrin));
-
     listen(socketServer, 100);
 
     for (int i = 0; i < 10; i++)
     {
         _socketClient = accept(socketServer, reinterpret_cast<struct sockaddr*>(&sockaddrClient), &clientSize);
         rclcpp::init(argc, argv);
+
+        printf("test: %d\n", i + 1);
 
         auto node = rclcpp::Node::make_shared("listener");
         rclcpp::QoS qos_option(DEFAULT_DEPTH);

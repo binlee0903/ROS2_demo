@@ -67,8 +67,10 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    for (int j = 0; j < 10; j++)
+    for (int j = 1; j <= 10; j++)
     {
+        printf("test %d\n", j);
+
         std::vector<std::string> msgs;
         std::vector<unsigned long long> publishTimes;
         std::vector<unsigned long long> subscribeTimes;
@@ -111,6 +113,10 @@ int main(int argc, char **argv)
             printf("error on connection");
             perror("connect");
             return 1;
+        }
+        else
+        {
+            printf("connected\n");
         }
 
         auto msg = std_msgs::msg::String();
@@ -184,7 +190,7 @@ int main(int argc, char **argv)
 
         rclcpp::shutdown();
 
-        std::ofstream os{"./output.txt"};
+        std::ofstream os{ "./output_" + std::to_string(j) + ".txt" };
 
         int fileSizeBase = 256;
 
