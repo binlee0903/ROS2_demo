@@ -31,10 +31,11 @@ static const rmw_qos_profile_t rmw_qos_profile_best_effort = {
     RMW_QOS_POLICY_DURABILITY_VOLATILE};
 
 
-void callback(const std_msgs::msg::String::SharedPtr msg){
+void callback(const std_msgs::msg::String::SharedPtr msg) {
+    write(_socketClient, "x", 1);
+
     if (msg->data.length() != 0)
     {
-        write(_socketClient, "x", 1);
         connectCount++;
 
         if (connectCount >= 10)
