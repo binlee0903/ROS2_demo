@@ -16,6 +16,7 @@ constexpr int PUBLISH_Hz = 1000;
 constexpr int DEFAULT_PORT = 8080;
 
 int _socketClient = 0;
+int connectCount = 0;
 
 static const rmw_qos_profile_t rmw_qos_profile_reliable = {
     RMW_QOS_POLICY_HISTORY_KEEP_ALL,
@@ -32,31 +33,18 @@ static const rmw_qos_profile_t rmw_qos_profile_best_effort = {
 
 void callback(const std_msgs::msg::String::SharedPtr msg){
     write(_socketClient, "x", 1);
+    connectCount++;
+
+    if (connectCount >= 10)
+    {
+        connectCount = 0;
+        close(_socketClient);
+        rclcpp::shutdown();
+    }
 }
 
 int main(int argc, char** argv)
 {
-    rclcpp::init(argc, argv);
-
-    auto node = rclcpp::Node::make_shared("listener");
-    rclcpp::QoS qos_option(DEFAULT_DEPTH);
-    if (IS_RELIABLE == true)
-    {
-        qos_option
-            .reliable()
-            .keep_all()
-            .transient_local();
-    }
-    else
-    {
-        qos_option
-            .best_effort()
-            .keep_all()
-            .durability_volatile();
-    }
-
-    auto subscriber = node->create_subscription<std_msgs::msg::String>("listener",  qos_option, callback);
-
     sockaddr_in sockaddrin, sockaddrClient;
     int socketServer = socket(AF_INET, SOCK_STREAM, 0);
     unsigned int clientSize = sizeof(sockaddrClient);
@@ -72,10 +60,34 @@ int main(int argc, char** argv)
 
     listen(socketServer, 100);
 
-    _socketClient = accept(socketServer, reinterpret_cast<struct sockaddr*>(&sockaddrClient), &clientSize);
+    for (int i = 0; i < 10; i++)
+    {
+        _socketClient = accept(socketServer, reinterpret_cast<struct sockaddr*>(&sockaddrClient), &clientSize);
+        rclcpp::init(argc, argv);
 
-    rclcpp::spin(node);
-    rclcpp::shutdown();
+        auto node = rclcpp::Node::make_shared("listener");
+        rclcpp::QoS qos_option(DEFAULT_DEPTH);
+        if (IS_RELIABLE == true)
+        {
+            qos_option
+                .reliable()
+                .keep_all()
+                .transient_local();
+        }
+        else
+        {
+            qos_option
+                .best_effort()
+                .keep_all()
+                .durability_volatile();
+        }
+
+        auto subscriber = node->create_subscription<std_msgs::msg::String>("listener",  qos_option, callback);
+
+        rclcpp::spin(node);
+    }
+
+    close(socketServer);
 
     return 0;
 }
