@@ -1,110 +1,68 @@
-#include <functional>
 #include <memory>
-#include <string>
-#include <fstream>
-#include <time.h>
-#include <unistd.h>
 #include <sched.h>
-#include <arpa/inet.h>
 #include <sys/mman.h>
-
 #include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/u_int64.hpp"
 
+// --- 설정용 상수 ---
 constexpr bool IS_RELIABLE = true;
 constexpr int DEFAULT_DEPTH = 5;
-constexpr int PUBLISH_Hz = 1000;
-constexpr int DEFAULT_PORT = 8080;
+// ---
 
-int _socketClient = 0;
-int connectCount = 0;
-
-static const rmw_qos_profile_t rmw_qos_profile_reliable = {
-    RMW_QOS_POLICY_HISTORY_KEEP_ALL,
-    5,
-    RMW_QOS_POLICY_RELIABILITY_RELIABLE,
-    RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL};
-
-static const rmw_qos_profile_t rmw_qos_profile_best_effort = {
-    RMW_QOS_POLICY_HISTORY_KEEP_LAST,
-    1,
-    RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
-    RMW_QOS_POLICY_DURABILITY_VOLATILE};
-
-
-void callback(const std_msgs::msg::String::SharedPtr msg) {
-    write(_socketClient, "x", 1);
-
-    if (msg->data.length() > 200)
-    {
-        connectCount++;
-
-        if (connectCount >= 17)
-        {
-            connectCount = 0;
-            rclcpp::shutdown();
-        }
-    }
-}
-
-int main(int argc, char** argv)
+// Pong 노드는 받은 메시지를 그대로 되돌려주는 역할만 합니다.
+class PongNode : public rclcpp::Node
 {
-    mlockall(MCL_FUTURE);
-
-    usleep(1000); // avoid race condition
-    sched_param pri = {94};
-    if (sched_setscheduler(0, SCHED_FIFO, &pri) == -1)
+public:
+    PongNode() : Node("pong_node")
     {
-        perror("sched_setattr");
-        exit(EXIT_FAILURE);
+        // --- QoS 설정: 상수를 사용하여 동적으로 구성 ---
+        rclcpp::QoS qos_profile(1); // 기본값으로 초기화
+        if (IS_RELIABLE) {
+            // Reliable 설정: KEEP_ALL, 지정된 depth, RELIABLE, TRANSIENT_LOCAL
+            qos_profile = rclcpp::QoS(rclcpp::KeepAll())
+                              .reliable()
+                              .transient_local();
+        } else {
+            // Best Effort 설정: KEEP_LAST(depth=1), BEST_EFFORT, VOLATILE
+            qos_profile = rclcpp::QoS(rclcpp::KeepLast(1))
+                              .best_effort()
+                              .durability_volatile();
+        }
+        // ---
+
+        // '/ping' 토픽을 구독합니다.
+        ping_subscriber_ = this->create_subscription<std_msgs::msg::UInt64>(
+            "ping", qos_profile,
+            std::bind(&PongNode::ping_callback, this, std::placeholders::_1));
+
+        // '/pong' 토픽으로 발행합니다.
+        pong_publisher_ = this->create_publisher<std_msgs::msg::UInt64>("pong", qos_profile);
+
+        RCLCPP_INFO(this->get_logger(), "Pong node has started. Waiting for pings.");
     }
 
-    sockaddr_in sockaddrin, sockaddrClient;
-    int socketServer = socket(AF_INET, SOCK_STREAM, 0);
-    unsigned int clientSize = sizeof(sockaddrClient);
-
-    sockaddrin.sin_family = AF_INET;
-    sockaddrin.sin_port = htons(DEFAULT_PORT);
-    sockaddrin.sin_addr.s_addr = INADDR_ANY;
-
-    int trueValue = 1;
-    setsockopt(socketServer, SOL_SOCKET, SO_REUSEADDR, &trueValue, sizeof(int));
-
-    bind(socketServer, reinterpret_cast<struct sockaddr*>(&sockaddrin), sizeof(sockaddrin));
-    listen(socketServer, 100);
-
-    for (int i = 0; i < 10; i++)
+private:
+    void ping_callback(const std_msgs::msg::UInt64::SharedPtr msg)
     {
-        _socketClient = accept(socketServer, reinterpret_cast<struct sockaddr*>(&sockaddrClient), &clientSize);
-        rclcpp::init(argc, argv);
-
-        printf("test: %d\n", i + 1);
-
-        auto node = rclcpp::Node::make_shared("listener");
-        rclcpp::QoS qos_option(DEFAULT_DEPTH);
-        if (IS_RELIABLE == true)
-        {
-            qos_option
-                .reliable()
-                .keep_all()
-                .transient_local();
-        }
-        else
-        {
-            qos_option
-                .best_effort()
-                .keep_all()
-                .durability_volatile();
-        }
-
-        auto subscriber = node->create_subscription<std_msgs::msg::String>("listener",  qos_option, callback);
-
-        rclcpp::spin(node);
-        close(_socketClient);
-        printf("end test\n");
+        pong_publisher_->publish(*msg);
     }
 
-    close(socketServer);
+    rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr ping_subscriber_;
+    rclcpp::Publisher<std_msgs::msg::UInt64>::SharedPtr pong_publisher_;
+};
 
+int main(int argc, char *argv[])
+{
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) == -1) {
+        perror("mlockall failed");
+    }
+    struct sched_param pri = {90};
+    if (sched_setscheduler(0, SCHED_FIFO, &pri) == -1) {
+        perror("sched_setscheduler failed");
+    }
+
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<PongNode>());
+    rclcpp::shutdown();
     return 0;
 }

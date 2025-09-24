@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(ROS2_DEMO)
+project(ros2_demo)
 
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
